@@ -1,0 +1,145 @@
+---
+title: "Practical Machine Learning - Project"
+author: "Hailu Teju"
+date: "November 4, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+In this project, the goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The five ways are: Class A - exactly according to the specification, Class B - throwing the elbows to the front, Class C - lifting the dumbbell only halfway, Class D - lowering the dumbbell only halfway, and Class E - throwing the hips to the front. Only Class A corresponds to correct performance. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Data Processing
+
+### Getting the data
+
+We first load the required R packages that will be needed for analysis and then download the training and testing data sets from the given URLs.
+
+```{r message = FALSE, warning = FALSE}
+
+# Load the required packages
+library(caret); library(rattle); library(rpart) 
+library(rpart.plot); library(RColorBrewer); library(randomForest)
+
+```
+
+```{r}
+
+trainUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- read.csv(url(trainUrl),na.strings=c("NA", "#DIV/0!", ""))
+testing <- read.csv(url(testUrl),na.strings=c("NA","#DIV/0!",""))
+
+dim(training); dim(testing)
+```
+The training dataset has 19622 observations and 160 variables, and the testing dataset contains 20 observations and 160 variables. We are trying to predict the outcome of the variable ```classe``` in the training set.
+
+### Cleaning the data
+
+We now remove the first seven columns (predictors) of the training and testing dataset since these variables have little predicting power for the outcome ```classe.```
+
+```{r}
+
+training <- training[,-c(1:7)]
+testing <- testing[,-c(1:7)]
+```
+
+We also remove predictors that contain any missing values.
+
+```{r}
+training <- training[, colSums(is.na(training))==0]
+testing <- testing[, colSums(is.na(testing))==0]
+
+dim(training); dim(testing)
+
+```
+
+Our cleaned training dataset now contains 19622 observations and 53 variables and the cleaned testing data contains 20 observations and 53 variables. The first 52 variables are the same for the training and testing datasets and they have different last variables, which are ```classe``` for training and ```problem_id``` for testing datasets.
+
+### Partition the data
+
+In order to get out-of-sample errors, we partition the cleaned training dataset into a training set (```myTraining```, 70%) for prediction and a validation set (```myTesting```, 30%) to compute the out-of-sample errors.
+
+```{r}
+set.seed(43876)
+
+inTrain <- createDataPartition(y=training$classe, p=0.7,list=FALSE)
+
+myTraining <- training[inTrain,]
+myTesting <- training[-inTrain,]
+
+dim(myTraining);dim(myTesting)
+```
+
+## ML Prediction Algorithms
+
+We use classification trees and random forests to predict the outcome.
+
+### Classification tree
+
+In practice, ```k=5 or k=10``` when doing a ```k-fold``` cross validation. Here we use the default setting in trainControl function - which is 10.
+
+```{r}
+control <- trainControl(method="cv")
+
+fit_rpart <- train(classe ~. , data=myTraining, method='rpart', trControl = control)
+
+print(fit_rpart, digits=5)
+
+```
+
+Viewing the decision tree with fancy:
+
+```{r fig.height=8, fig.width=10}
+
+fancyRpartPlot(fit_rpart$finalModel,
+               main='Decision Tree',cex=1,col='blue')
+```
+
+```{r}
+# Predict outcomes using the testing set
+pred_rpart <- predict(fit_rpart, myTesting)
+
+# Show prediction result
+(confM_rpart <- confusionMatrix(myTesting$classe, pred_rpart))
+
+(accur_rpart <- confM_rpart$overall[1])
+```
+
+This shows that we got only a 0.5 accuracy, which means that using classification tree does not predict the outcome ```classe``` very well.
+
+### Random forests
+
+```{r}
+fit_rf <- randomForest(classe ~ ., data=myTraining)
+
+print(fit_rf, digits=5)
+```
+
+```{r}
+# Predict outcomes using testing set
+pred_rf <- predict(fit_rf, myTesting)
+
+# Show prediction result
+(confM_rf <- confusionMatrix(myTesting$classe, pred_rf))
+
+(accur_rf <- confM_rf$overall[1])
+```
+
+Random forest yielded much better results than classification trees. The accuracy here is 0.995, and so the out-of-sample error rate is 0.005.
+
+### Prediction on the testing set
+
+We use random forests, which yielded much better in-sample results, to predict the outcome variable ```classe``` for the testing set.
+
+```{r}
+(predict(fit_rf, testing))
+```
+
+#### End!
